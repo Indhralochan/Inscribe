@@ -13,7 +13,7 @@ def writeFile(string):
 def readFile():
     f = open('userid.txt', 'r')
     v=f.readline()
-    return int(v)
+    return v
 
 def ClearFile():
     f= open('userid.txt','w')
@@ -35,52 +35,67 @@ class Note(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(80), nullable=False)
     content = db.Column(db.Text)
+
 with app.app_context():
     db.create_all()
 with app.app_context():
     users=User.query.all()
 
 @app.route('/')
-def landing():    
-    return render_template('index.html')
+def landing(): 
+    if(readFile()):
+        return redirect('/notes')
+    else:
+        return render_template('index.html')
+
+
 @app.route('/notes')
 def notes():
     userId=readFile()
+    userId=int(userId)
     notes=Note.query.filter_by(user_id=userId).all()
-    return render_template('notes.html',note=notes)
+    data={}
+    for item in notes:
+        data[item.title]=item.content      
+    return render_template('notes.html',note=notes,usernotes=data)
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user_exists = User.query.filter_by(username=username).first()
-        if user_exists:
-            return "User already exists"
-        hashed_password = generate_password_hash(password)
-        user = User(username=username, password=hashed_password)
-        db.session.add(user)
-        db.session.commit()
-        user = User.query.filter_by(username=username).first()
-        userId=str(user.id)
-        writeFile(userId)
+    if(readFile()):
         return redirect('/notes')
-    return render_template('signup.html')
+    else:
+        if request.method == 'POST':
+            username = request.form['username']
+            password = request.form['password']
+            user_exists = User.query.filter_by(username=username).first()
+            if user_exists:
+                return "User already exists"
+            hashed_password = generate_password_hash(password)
+            user = User(username=username, password=hashed_password)
+            db.session.add(user)
+            db.session.commit()
+            user = User.query.filter_by(username=username).first()
+            userId=str(user.id)
+            writeFile(userId)
+        return render_template('signup.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user_exists = User.query.filter_by(username=username).first()
-        if not user_exists or not check_password_hash(user_exists.password,password):
-            return "Invalid credentials"
-        user= User.query.filter_by(username=username).first()
-        userId=str(user.id)
-        writeFile(userId)
+    if(readFile()):
         return redirect('/notes')
-    
-    return render_template('login.html')
+    else:
+        if request.method == 'POST':
+            bool=True
+            username = request.form['username']
+            password = request.form['password']
+            user_exists = User.query.filter_by(username=username).first()
+            if not user_exists or not check_password_hash(user_exists.password,password):
+                return "Invalid credentials"
+            user= User.query.filter_by(username=username).first()
+            userId=str(user.id)
+            writeFile(userId)
+            return redirect('/notes')
+        return render_template('login.html')
 
 @app.route('/create', methods=['GET', 'POST'])
 def create():
@@ -88,6 +103,7 @@ def create():
         title = request.form['title']
         content = request.form['content']
         userId=readFile()
+        userId=int(userId)
         note = Note(user_id=userId,title=title, content=content)
         db.session.add(note)
         db.session.commit()
@@ -95,19 +111,23 @@ def create():
     return render_template('create.html')
 @app.route('/update/<int:id>', methods=['GET', 'POST'])
 def update(id):
-    note = Note.query.get(id)
+    note = Note.query.filter_by(id=id).first()
+    currentId=readFile()
+    currentId=int(currentId)
     if request.method == 'POST':
         note.title = request.form['title']
         note.content = request.form['content']
         db.session.commit()
         return redirect('/notes')
-    return render_template('update.html', note=note)
+    return render_template('update.html', note=note,id=currentId)
+
 @app.route('/delete/<int:id>')
 def delete(id):
     note = Note.query.get(id)
     db.session.delete(note)
     db.session.commit()
     return redirect('/notes')
+
 @app.route('/signout')
 def signout():
     ClearFile()
@@ -116,3 +136,8 @@ def signout():
 if __name__ == '__main__':
     app.run(debug=True)
     userId=''
+
+@app.after_request
+def after_request(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
